@@ -471,9 +471,9 @@ function sheetToRows(wb, name){
   const hdrs=raw[0].map(h=>h!=null?String(h).trim():'');
   return raw.slice(1).map(row=>{
     const obj={};
-    hdrs.forEach((h,i)=>{ obj[h]=row[i]!=null?row[i]:0; });
+    hdrs.forEach((h,i)=>{ obj[h]=row[i]!=null?row[i]:null; });
     return obj;
-  });
+  }).filter(row=>row['Fecha']!=null && row['Fecha']!==0 && row['Fecha']!=='');
 }
 
 // ── DATA HELPERS ──────────────────────────────────────────────
