@@ -277,6 +277,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;ba
     <div class="tabs">
       <div class="tab on" onclick="switchProv(0,this)">Bolsones</div>
       <div class="tab" onclick="switchProv(1,this)">Facturación $M</div>
+      <div class="tab" onclick="switchProv(2,this)">Bolsones - sin GC</div>
+      <div class="tab" onclick="switchProv(3,this)">Facturación $M - sin GC</div>
     </div>
     <div id="provBol">
       <div class="bar-head">
@@ -297,6 +299,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;ba
         <span class="bar-head-pp">Part. %</span>
       </div>
       <div id="provPesRows"><div class="no-data">Subí un archivo para ver los datos</div></div>
+    </div>
+    <div id="provBolSGC" style="display:none">
+      <div class="bar-head">
+        <span class="bar-head-name">Provincia</span><span class="bar-head-track"></span>
+        <span class="bar-head-v">Mes</span>
+        <span class="bar-head-pm">vs año ant.</span>
+        <span class="bar-head-pa">Acum %</span>
+        <span class="bar-head-pp">Part. %</span>
+      </div>
+      <div id="provBolSGCRows"><div class="no-data">Subí un archivo para ver los datos</div></div>
+    </div>
+    <div id="provPesSGC" style="display:none">
+      <div class="bar-head">
+        <span class="bar-head-name">Provincia</span><span class="bar-head-track"></span>
+        <span class="bar-head-v">Mes $M</span>
+        <span class="bar-head-pm">vs año ant.</span>
+        <span class="bar-head-pa">Acum $M</span>
+        <span class="bar-head-pp">Part. %</span>
+      </div>
+      <div id="provPesSGCRows"><div class="no-data">Subí un archivo para ver los datos</div></div>
     </div>
   </div>
 </div>
@@ -397,6 +419,8 @@ function switchProv(n){
   document.querySelectorAll('#page-provincia .tab').forEach((t,i)=>t.classList.toggle('on',i===n));
   document.getElementById('provBol').style.display=n===0?'':'none';
   document.getElementById('provPes').style.display=n===1?'':'none';
+  document.getElementById('provBolSGC').style.display=n===2?'':'none';
+  document.getElementById('provPesSGC').style.display=n===3?'':'none';
 }
 function switchFel(n){
   document.querySelectorAll('.fel-sub-tab').forEach((t,i)=>t.classList.toggle('on',i===n));
@@ -471,9 +495,9 @@ function sheetToRows(wb, name){
   const hdrs=raw[0].map(h=>h!=null?String(h).trim():'');
   return raw.slice(1).map(row=>{
     const obj={};
-    hdrs.forEach((h,i)=>{ obj[h]=row[i]!=null?row[i]:null; });
+    hdrs.forEach((h,i)=>{ obj[h]=row[i]!=null?row[i]:0; });
     return obj;
-  }).filter(row=>row['Fecha']!=null && row['Fecha']!==0 && row['Fecha']!=='');
+  });
 }
 
 // ── DATA HELPERS ──────────────────────────────────────────────
@@ -658,6 +682,7 @@ function parseAndRender(wb, fname){
   const marcaRows = sheetToRows(wb,'Marcas');
   const vendRows  = sheetToRows(wb,'Vendedores');
   const provRows  = sheetToRows(wb,'Provincias').map(r=>({...r,Provincia:normProv(r['Provincia']||'')}));
+  const provSGCRows = sheetToRows(wb,'Provincias (Sin GC)').map(r=>({...r,Provincia:normProv(r['Provincia']||'')}));
   const gcRows    = sheetToRows(wb,'Grandes Cuentas');
   const gcMNRows  = sheetToRows(wb,'Grandes Cuentas (MN)');
 
@@ -852,6 +877,35 @@ function parseAndRender(wb, fname){
     return {name:v.name,val:v.pes,vsMes:bp>0?(v.pes-bp)/bp:null,
       vsAcum:null,acumVal:acC,part:totPesP>0?v.pes/totPesP*100:0};
   }), maxPesP, true);
+
+  // ── PROVINCIAS SIN GC ─────────────────────────────────────────
+  const provinciasSGC=[...new Set(provSGCRows.map(r=>(r['Provincia']||'').toString().trim()).filter(Boolean))];
+  const pvs=(y,m,p,met)=>sumSheet(provSGCRows,y,m,'Provincia',p,met);
+  const pvsa=(y,m,p,met)=>sumAcum(provSGCRows,y,m,'Provincia',p,met);
+
+  const provMesSGC=provinciasSGC.map(p=>({name:p,bol:pvs(cy,cm,p,'Bolsones'),pes:pvs(cy,cm,p,'Pesos')}))
+    .filter(p=>p.bol>0||p.pes>0);
+  provMesSGC.sort((a,b)=>b.bol-a.bol);
+
+  const totBolSGC=provMesSGC.reduce((s,v)=>s+v.bol,0);
+  const totPesSGC=provMesSGC.reduce((s,v)=>s+v.pes,0);
+  const maxBolSGC=provMesSGC.length?provMesSGC[0].bol:1;
+  const maxPesSGC=provMesSGC.length?Math.max(...provMesSGC.map(v=>v.pes)):1;
+
+  buildBarRows('provBolSGCRows', provMesSGC.map(v=>{
+    const bp=pvs(py,cm,v.name,'Bolsones');
+    const acC=pvsa(cy,cm,v.name,'Bolsones'), acP=pvsa(py,cm,v.name,'Bolsones');
+    return {name:v.name,val:v.bol,vsMes:bp>0?(v.bol-bp)/bp:null,
+      vsAcum:acP>0?(acC-acP)/acP:null,acumVal:null,part:totBolSGC>0?v.bol/totBolSGC*100:0};
+  }), maxBolSGC, false);
+
+  const provMesPesSGC=[...provMesSGC].sort((a,b)=>b.pes-a.pes);
+  buildBarRows('provPesSGCRows', provMesPesSGC.map(v=>{
+    const bp=pvs(py,cm,v.name,'Pesos');
+    const acC=pvsa(cy,cm,v.name,'Pesos');
+    return {name:v.name,val:v.pes,vsMes:bp>0?(v.pes-bp)/bp:null,
+      vsAcum:null,acumVal:acC,part:totPesSGC>0?v.pes/totPesSGC*100:0};
+  }), maxPesSGC, true);
 
   // ── GRANDES CUENTAS ───────────────────────────────────────────
   function renderGC(rows, rowsContId, doughnutId, legId){
